@@ -41,8 +41,8 @@ def _relpath(from_dir: Path, target: Path) -> str:
     return os.path.relpath(target, from_dir)
 
 
-def _write_if_missing(path: Path, content: str, executable: bool = False) -> bool:
-    if path.exists():
+def _write_if_missing(path: Path, content: str, executable: bool = False, replace: bool = False) -> bool:
+    if path.exists() and not replace:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -67,6 +67,13 @@ This private repository is the active agentic workspace for `{repo_slug}`.
 - Keep publishable code, public docs, public tests, and public release automation in the public repo.
 - Keep private specs, agent protocols, customer or provider details, local automation, generated adapters, private tests, and release guardrails here.
 - Ambiguous material stays private until explicit promotion review.
+
+## Read Order
+- Start here for repo-pair boundaries and commands.
+- Product direction: `NORTHSTAR.md`, `NORTHSTAR_METRICS.md`, `PRD.md`.
+- Project rules: `CONSTITUTION.md`, `docs/governance/DOCS_SYSTEM.md`.
+- Brownfield state, when present: `CURRENT_STATE.md`, `MIGRATION_GUARDRAILS.md`.
+- Active work: `specs/registry.yaml` and `specs/<id>/{{spec.md,plan.md,tasks.md}}`.
 
 ## Overlay Layout
 - `overlays/public-patches/`: active patches to apply to the public checkout.
@@ -206,7 +213,13 @@ echo "No private markers found in public repo."
 """
 
 
-def scaffold_private_overlay(public_repo: Path, private_repo: Path, repo_slug: str, mode: str) -> list[Path]:
+def scaffold_private_overlay(
+    public_repo: Path,
+    private_repo: Path,
+    repo_slug: str,
+    mode: str,
+    replace_agents: bool = False,
+) -> list[Path]:
     if public_repo == private_repo:
         raise ValueError("public and private repositories must be different paths")
 
@@ -223,7 +236,7 @@ def scaffold_private_overlay(public_repo: Path, private_repo: Path, repo_slug: s
             created.append(gitkeep)
 
     files = (
-        ("AGENTS.md", _private_overlay_agents(repo_slug, public_rel, private_rel, mode), False),
+        ("AGENTS.md", _private_overlay_agents(repo_slug, public_rel, private_rel, mode), False, replace_agents),
         ("README.md", _private_overlay_readme(repo_slug, public_rel), False),
         (".agentic-private-overlay.yml", _private_overlay_config(repo_slug, public_rel, private_rel, mode), False),
         (".gitignore", _private_overlay_gitignore(), False),
@@ -231,8 +244,10 @@ def scaffold_private_overlay(public_repo: Path, private_repo: Path, repo_slug: s
         ("scripts/apply_public_overlay.sh", _apply_overlay_script(public_rel), True),
         ("scripts/leak_check.sh", _leak_check_script(repo_slug, public_rel), True),
     )
-    for rel_path, content, executable in files:
+    for item in files:
+        rel_path, content, executable = item[:3]
+        replace = item[3] if len(item) > 3 else False
         path = private_repo / rel_path
-        if _write_if_missing(path, content, executable=executable):
+        if _write_if_missing(path, content, executable=executable, replace=replace):
             created.append(path)
     return created

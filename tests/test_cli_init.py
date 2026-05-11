@@ -78,7 +78,7 @@ def test_cmd_init_private_overlay_defaults_to_public_sibling_from_private_repo(t
     def _fake_run_copier(source: str, dest: Path) -> int:
         seen["source"] = source
         seen["dest"] = dest
-        public.mkdir()
+        (dest / "AGENTS.md").write_text("template agent instructions", encoding="utf-8")
         return 0
 
     monkeypatch.setattr(cli, "_run_copier", _fake_run_copier)
@@ -86,7 +86,9 @@ def test_cmd_init_private_overlay_defaults_to_public_sibling_from_private_repo(t
     rc = cli.cmd_init("example-app", private_overlay=True)
 
     assert rc == 0
-    assert seen == {"source": "/tmp/template", "dest": public.resolve()}
+    assert seen == {"source": "/tmp/template", "dest": private.resolve()}
+    assert public.is_dir()
+    assert not (public / "AGENTS.md").exists()
     assert (private / "AGENTS.md").read_text(encoding="utf-8").startswith("# AGENTS.md - Private Overlay")
     assert "Public sibling: `../example-app`" in (private / "AGENTS.md").read_text(encoding="utf-8")
     assert (private / ".agentic-private-overlay.yml").read_text(encoding="utf-8") == (
@@ -112,6 +114,7 @@ def test_cmd_overlay_private_overlay_uses_explicit_private_repo(tmp_path, monkey
     def _fake_run_copier(source: str, dest: Path) -> int:
         seen["source"] = source
         seen["dest"] = dest
+        (dest / "AGENTS.md").write_text("template agent instructions", encoding="utf-8")
         return 0
 
     monkeypatch.setattr(cli, "_run_copier", _fake_run_copier)
@@ -119,11 +122,42 @@ def test_cmd_overlay_private_overlay_uses_explicit_private_repo(tmp_path, monkey
     rc = cli.cmd_overlay(str(public), intake=False, private_overlay=True, private_repo=str(private))
 
     assert rc == 0
-    assert seen == {"source": "/tmp/brownfield-template", "dest": public.resolve()}
+    assert seen == {"source": "/tmp/brownfield-template", "dest": private.resolve()}
+    assert not (public / "AGENTS.md").exists()
+    assert (private / "AGENTS.md").read_text(encoding="utf-8").startswith("# AGENTS.md - Private Overlay")
     config = (private / ".agentic-private-overlay.yml").read_text(encoding="utf-8")
     assert "repo_slug: legacy\n" in config
     assert "mode: brownfield\n" in config
     assert "public_repo: ../legacy\n" in config
+
+
+def test_cmd_overlay_private_overlay_writes_intake_to_private_repo(tmp_path, monkeypatch):
+    public = tmp_path / "legacy"
+    private = tmp_path / "legacy-private"
+    public.mkdir()
+    monkeypatch.setattr(cli, "_brownfield_source", lambda: "/tmp/brownfield-template")
+
+    seen = {}
+
+    def _fake_write_census(path: Path, out_file: str = ".agentic-bootstrap.yml") -> Path:
+        seen["census_path"] = path
+        seen["out_file"] = Path(out_file)
+        return Path(out_file)
+
+    def _fake_run_copier(source: str, dest: Path) -> int:
+        seen["source"] = source
+        seen["dest"] = dest
+        return 0
+
+    monkeypatch.setattr(cli, "write_census_yaml", _fake_write_census)
+    monkeypatch.setattr(cli, "_run_copier", _fake_run_copier)
+
+    rc = cli.cmd_overlay(str(public), intake=True, private_overlay=True, private_repo=str(private))
+
+    assert rc == 0
+    assert seen["census_path"] == public.resolve()
+    assert seen["out_file"] == private.resolve() / ".agentic-bootstrap.yml"
+    assert seen["dest"] == private.resolve()
 
 
 def test_private_overlay_path_options_require_private_overlay(monkeypatch, capsys):

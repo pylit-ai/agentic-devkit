@@ -112,15 +112,22 @@ def cmd_init(
             file=sys.stderr,
         )
         return 2
-    dest_path = default_public_repo_for_init(dest, public_repo) if private_overlay else Path(dest).resolve()
-    print(f"Running: copier copy {source} {dest_path}")
-    rc = _run_copier(source, dest_path)
-    if rc != 0 or not private_overlay:
+    if not private_overlay:
+        dest_path = Path(dest).resolve()
+        print(f"Running: copier copy {source} {dest_path}")
+        return _run_copier(source, dest_path)
+
+    dest_path = default_public_repo_for_init(dest, public_repo)
+    private_path = default_private_repo(dest_path, private_repo)
+    dest_path.mkdir(parents=True, exist_ok=True)
+    print(f"Public repo prepared: {dest_path}")
+    print(f"Running: copier copy {source} {private_path}")
+    rc = _run_copier(source, private_path)
+    if rc != 0:
         return rc
 
-    private_path = default_private_repo(dest_path, private_repo)
     try:
-        created = scaffold_private_overlay(dest_path, private_path, dest_path.name, "greenfield")
+        created = scaffold_private_overlay(dest_path, private_path, dest_path.name, "greenfield", replace_agents=True)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
@@ -143,18 +150,28 @@ def cmd_overlay(
     if not path.is_dir():
         print(f"Error: not a directory: {path}", file=sys.stderr)
         return 1
-    if intake:
-        out_path = write_census_yaml(path)
-        print(f"Wrote {out_path}")
     source = _brownfield_source()
-    print(f"Running: copier copy {source} {path}")
-    rc = _run_copier(source, path)
-    if rc != 0 or not private_overlay:
-        return rc
+
+    if not private_overlay:
+        if intake:
+            out_path = write_census_yaml(path)
+            print(f"Wrote {out_path}")
+        print(f"Running: copier copy {source} {path}")
+        return _run_copier(source, path)
 
     private_path = default_private_repo(path, private_repo)
+    private_path.mkdir(parents=True, exist_ok=True)
+    if intake:
+        out_path = write_census_yaml(path, out_file=str(private_path / ".agentic-bootstrap.yml"))
+        print(f"Wrote {out_path}")
+    print(f"Public repo left unchanged: {path}")
+    print(f"Running: copier copy {source} {private_path}")
+    rc = _run_copier(source, private_path)
+    if rc != 0:
+        return rc
+
     try:
-        created = scaffold_private_overlay(path, private_path, path.name, "brownfield")
+        created = scaffold_private_overlay(path, private_path, path.name, "brownfield", replace_agents=True)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2

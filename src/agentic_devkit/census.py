@@ -70,6 +70,9 @@ def to_yaml(obj, indent=0):
 
 def write_census_yaml(path: Path, out_file: str = ".agentic-bootstrap.yml") -> Path:
     """Run census on path and write YAML to path/out_file. Returns path to written file."""
-    dest = Path(path).resolve() / out_file
+    root = Path(path).resolve()
+    out_path = Path(out_file)
+    dest = out_path if out_path.is_absolute() else root / out_path
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(to_yaml(census(path)))
     return dest

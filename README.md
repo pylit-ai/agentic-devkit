@@ -19,13 +19,13 @@
 # New repo
 uvx agentic-devkit init my-new-repo
 
-# New public repo with private overlay workspace
+# From example-app-private: prepare sibling public repo, put agentic OS in private
 uvx agentic-devkit init example-app --private-overlay
 
 # Existing repo
 cd my-existing-repo && uvx agentic-devkit overlay .
 
-# Existing public repo with private overlay workspace
+# From example-app-private: keep public repo product-only, put overlay docs in private
 uvx agentic-devkit overlay ../example-app --private-overlay --private-repo .
 
 # Existing repo + prefill CURRENT_STATE from repo structure
@@ -44,11 +44,11 @@ The **init** and **overlay** commands use bundled templates by default, so no Gi
 |----------|----------|
 | **Greenfield** | New repo: NORTHSTAR, CONSTITUTION, AGENTS.md, PRD, governance, specs, adapters, bootstrap skill. |
 | **Brownfield** | Existing repo: CURRENT_STATE, MIGRATION_GUARDRAILS, brownfield AGENTS.md, governance, intake skill. |
-| **Private overlay** | Optional companion workspace: private AGENTS.md, public sibling mapping, overlay patch/file directories, leak check, and apply script. |
+| **Private overlay** | Optional companion workspace: agentic docs/adapters stay private; the public sibling is only prepared or referenced. |
 
 Then **point your agent at AGENTS.md** in the new repo. For greenfield, give a one-sentence product brief in the same chat (e.g. *“CLI for dev teams so they can run templates with less setup”*); the agent fills placeholders or asks if it needs more. For brownfield, ask explicitly for “brownfield intake” when you want CURRENT_STATE and the first spec.
 
-For public/private repo pairs, run `--private-overlay` from the private companion directory when it already exists. If the current directory ends in `-private`, `init example-app --private-overlay` writes the public template to sibling `../example-app` and scaffolds private overlay files in the current directory. Use `--public-repo` or `--private-repo` when the sibling names differ.
+For public/private repo pairs, run `--private-overlay` from the private companion directory when it already exists. If the current directory ends in `-private`, `init example-app --private-overlay` prepares sibling `../example-app` but writes the agentic template and private overlay files into the current private directory. The public repo should stay product-only: no root `AGENTS.md`, generated adapters, private overlay docs, or agentic spec/governance trees. Use `--public-repo` or `--private-repo` when the sibling names differ.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/pylit-ai/agentic-devkit/main/assets/Artifact_generation.png" alt="Artifact generation cycle" width="640">
