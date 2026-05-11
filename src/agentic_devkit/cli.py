@@ -6,6 +6,11 @@ import sys
 from pathlib import Path
 
 from .census import write_census_yaml
+from .private_overlay import (
+    default_private_repo,
+    default_public_repo_for_init,
+    scaffold_private_overlay,
+)
 from .traceability import compile_traceability, diagnostics, load_requirement
 
 DEFAULT_GREENFIELD = "gh:your-org/agentic-dev-greenfield"
@@ -58,8 +63,27 @@ def _package_version() -> str:
         return "0+unknown"
 
 
-def cmd_init(dest: str) -> int:
+def _print_private_overlay_summary(public_repo: Path, private_repo: Path, created: list[Path]) -> None:
+    print(f"Private overlay: public={public_repo} private={private_repo}")
+    if created:
+        print("Private overlay files created:")
+        for path in created:
+            print(f"  - {path}")
+    else:
+        print("Private overlay scaffold already present; no files created.")
+
+
+def cmd_init(
+    dest: str,
+    private_overlay: bool = False,
+    public_repo: str | None = None,
+    private_repo: str | None = None,
+) -> int:
     """Create a new greenfield repo from template."""
+    if (public_repo or private_repo) and not private_overlay:
+        print("Error: --public-repo and --private-repo require --private-overlay.", file=sys.stderr)
+        return 2
+
     source = _greenfield_source()
     if _is_placeholder_source(source):
         print(
@@ -88,13 +112,33 @@ def cmd_init(dest: str) -> int:
             file=sys.stderr,
         )
         return 2
-    dest_path = Path(dest).resolve()
+    dest_path = default_public_repo_for_init(dest, public_repo) if private_overlay else Path(dest).resolve()
     print(f"Running: copier copy {source} {dest_path}")
-    return _run_copier(source, dest_path)
+    rc = _run_copier(source, dest_path)
+    if rc != 0 or not private_overlay:
+        return rc
+
+    private_path = default_private_repo(dest_path, private_repo)
+    try:
+        created = scaffold_private_overlay(dest_path, private_path, dest_path.name, "greenfield")
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    _print_private_overlay_summary(dest_path, private_path, created)
+    return 0
 
 
-def cmd_overlay(path: str, intake: bool) -> int:
+def cmd_overlay(
+    path: str,
+    intake: bool,
+    private_overlay: bool = False,
+    private_repo: str | None = None,
+) -> int:
     """Apply brownfield overlay to an existing repo. With --intake, run census first."""
+    if private_repo and not private_overlay:
+        print("Error: --private-repo requires --private-overlay.", file=sys.stderr)
+        return 2
+
     path = Path(path).resolve()
     if not path.is_dir():
         print(f"Error: not a directory: {path}", file=sys.stderr)
@@ -104,7 +148,18 @@ def cmd_overlay(path: str, intake: bool) -> int:
         print(f"Wrote {out_path}")
     source = _brownfield_source()
     print(f"Running: copier copy {source} {path}")
-    return _run_copier(source, path)
+    rc = _run_copier(source, path)
+    if rc != 0 or not private_overlay:
+        return rc
+
+    private_path = default_private_repo(path, private_repo)
+    try:
+        created = scaffold_private_overlay(path, private_path, path.name, "brownfield")
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    _print_private_overlay_summary(path, private_path, created)
+    return 0
 
 
 def cmd_intake(path: str) -> int:
@@ -202,12 +257,25 @@ def main() -> int:
 
     p_init = sub.add_parser("init", help="Create a new repo from greenfield template")
     p_init.add_argument("dest", help="Destination path (e.g. my-new-repo)")
-    p_init.set_defaults(func=lambda a: cmd_init(a.dest))
+    p_init.add_argument(
+        "--private-overlay",
+        action="store_true",
+        help="Scaffold a private companion repo beside the public greenfield repo",
+    )
+    p_init.add_argument("--public-repo", help="Public repo path to use with --private-overlay")
+    p_init.add_argument("--private-repo", help="Private overlay repo path to use with --private-overlay")
+    p_init.set_defaults(func=lambda a: cmd_init(a.dest, a.private_overlay, a.public_repo, a.private_repo))
 
     p_overlay = sub.add_parser("overlay", help="Apply brownfield overlay to an existing repo")
     p_overlay.add_argument("path", nargs="?", default=".", help="Repo path (default: .)")
     p_overlay.add_argument("--intake", action="store_true", help="Run repo census first and write .agentic-bootstrap.yml")
-    p_overlay.set_defaults(func=lambda a: cmd_overlay(a.path, a.intake))
+    p_overlay.add_argument(
+        "--private-overlay",
+        action="store_true",
+        help="Scaffold or refresh a private companion repo for this public repo",
+    )
+    p_overlay.add_argument("--private-repo", help="Private overlay repo path to use with --private-overlay")
+    p_overlay.set_defaults(func=lambda a: cmd_overlay(a.path, a.intake, a.private_overlay, a.private_repo))
 
     p_intake = sub.add_parser("intake", help="Show brownfield intake next-step instructions")
     p_intake.add_argument("path", nargs="?", default=".", help="Repo path (default: .)")
