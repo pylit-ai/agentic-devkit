@@ -85,5 +85,8 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Install governance tools
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Run governance checks
         run: ./scripts/check-governance
