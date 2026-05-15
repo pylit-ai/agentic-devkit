@@ -85,7 +85,8 @@ production dependency is needed, verification is impossible, or the chosen strat
     "docs/strategy-briefs/active/README.md": """# Active Strategy Briefs
 
 Place in-progress StrategyBrief files here. Canonical harness content lives in
-`/Users/reynard/src/wx-b/metactl-library/packs/wxb-pack-codex-planning-harness/`.
+the `wxb-pack-codex-planning-harness` pack when `--planning-harness-pack` or
+`AGENTIC_DEV_PLANNING_HARNESS_PACK` points to a metactl-library checkout.
 """,
     "docs/exec-plans/active/README.md": """# Active ExecPlans
 
