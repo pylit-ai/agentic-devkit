@@ -230,3 +230,25 @@ def test_planning_harness_reads_metactl_pack_snippet_interface(tmp_path):
     apply_planning_harness(repo, pack_root=pack)
 
     assert (repo / "AGENTS.md").read_text(encoding="utf-8") == "## Canonical Planning Harness\n"
+
+
+def test_planning_harness_projects_pack_template_tree(tmp_path):
+    repo = tmp_path / "legacy"
+    repo.mkdir()
+    pack = tmp_path / "pack"
+    template = pack / "codex-planning-harness/templates/repo"
+    marker = template / "docs/generated/from-pack.md"
+    verifier = template / "tools/verify/run_targeted.sh"
+    marker.parent.mkdir(parents=True)
+    verifier.parent.mkdir(parents=True)
+    marker.write_text("# From Pack\n", encoding="utf-8")
+    verifier.write_text("#!/bin/sh\necho targeted\n", encoding="utf-8")
+    verifier.chmod(0o755)
+
+    apply_planning_harness(repo, pack_root=pack)
+
+    assert (repo / "docs/generated/from-pack.md").read_text(encoding="utf-8") == "# From Pack\n"
+    assert (repo / "tools/verify/run_targeted.sh").read_text(encoding="utf-8").startswith(
+        "#!/bin/sh"
+    )
+    assert (repo / "tools/verify/run_targeted.sh").stat().st_mode & 0o111

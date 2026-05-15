@@ -17,11 +17,17 @@ _PACK_SOURCE_ROOTS = (
     Path("."),
 )
 
+_PACK_TEMPLATE_ROOTS = _PACK_SOURCE_ROOTS[:6]
+
 _PACK_SPECIAL_FILES = {
     "AGENTS.md": (
         Path("codex-planning-harness/snippets/AGENTS.md.addition.md"),
         Path("snippets/AGENTS.md.addition.md"),
     ),
+}
+
+_FALLBACK_EXECUTABLES = {
+    "tools/policy/check_planning_harness.py",
 }
 
 _REQUIRED_DIRS = (
@@ -179,23 +185,53 @@ def apply_planning_harness(
         if not dry_run:
             dest_dir.mkdir(parents=True, exist_ok=True)
 
-    for rel_path, content in files.items():
+    for rel_path, (content, executable) in files.items():
         dest = target_path / rel_path
-        actions.append(_write_file(dest, content, dry_run=dry_run, replace=replace))
+        actions.append(
+            _write_file(
+                dest,
+                content,
+                dry_run=dry_run,
+                replace=replace,
+                executable=executable,
+            )
+        )
 
     return actions
 
 
-def _load_pack_files(pack_root: Path) -> dict[str, str]:
-    files = dict(_FALLBACK_FILES)
+def _load_pack_files(pack_root: Path) -> dict[str, tuple[str, bool]]:
+    files = {
+        rel_path: (content, rel_path in _FALLBACK_EXECUTABLES)
+        for rel_path, content in _FALLBACK_FILES.items()
+    }
     if not pack_root.is_dir():
         return files
+
+    template_root = _find_pack_template_root(pack_root)
+    if template_root is not None:
+        for source in sorted(template_root.rglob("*")):
+            if not source.is_file():
+                continue
+            rel_path = source.relative_to(template_root).as_posix()
+            files[rel_path] = (
+                source.read_text(encoding="utf-8"),
+                _is_executable(source),
+            )
 
     for rel_path in _FALLBACK_FILES:
         source = _find_pack_file(pack_root, rel_path)
         if source is not None:
-            files[rel_path] = source.read_text(encoding="utf-8")
+            files[rel_path] = (source.read_text(encoding="utf-8"), _is_executable(source))
     return files
+
+
+def _find_pack_template_root(pack_root: Path) -> Path | None:
+    for root in _PACK_TEMPLATE_ROOTS:
+        candidate = pack_root / root
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def _find_pack_file(pack_root: Path, rel_path: str) -> Path | None:
@@ -210,11 +246,19 @@ def _find_pack_file(pack_root: Path, rel_path: str) -> Path | None:
     return None
 
 
-def _write_file(dest: Path, content: str, *, dry_run: bool, replace: bool) -> HarnessWrite:
+def _write_file(
+    dest: Path,
+    content: str,
+    *,
+    dry_run: bool,
+    replace: bool,
+    executable: bool,
+) -> HarnessWrite:
     dest.parent.mkdir(parents=True, exist_ok=True) if not dry_run else None
     if not dest.exists():
         if not dry_run:
             dest.write_text(content, encoding="utf-8")
+            _set_executable(dest, executable)
         return HarnessWrite(dest, "create", "required harness file")
 
     current = dest.read_text(encoding="utf-8")
@@ -224,11 +268,13 @@ def _write_file(dest: Path, content: str, *, dry_run: bool, replace: bool) -> Ha
     if replace:
         if not dry_run:
             dest.write_text(content, encoding="utf-8")
+            _set_executable(dest, executable)
         return HarnessWrite(dest, "replace", "explicit replace requested")
 
     merge_dest = _merge_candidate_path(dest, content)
     if not dry_run and not merge_dest.exists():
         merge_dest.write_text(content, encoding="utf-8")
+        _set_executable(merge_dest, executable)
     return HarnessWrite(merge_dest, "merge-candidate", f"{dest.name} already exists")
 
 
@@ -242,3 +288,12 @@ def _merge_candidate_path(dest: Path, content: str) -> Path:
         if not numbered.exists() or numbered.read_text(encoding="utf-8") == content:
             return numbered
         index += 1
+
+
+def _is_executable(path: Path) -> bool:
+    return bool(path.stat().st_mode & 0o111)
+
+
+def _set_executable(path: Path, executable: bool) -> None:
+    if executable:
+        path.chmod(path.stat().st_mode | 0o111)
