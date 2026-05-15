@@ -216,7 +216,7 @@ def test_cmd_overlay_dry_run_requires_planning_harness(tmp_path, capsys):
     out = capsys.readouterr()
 
     assert rc == 2
-    assert "--dry-run and --replace require --planning-harness" in out.err
+    assert "--dry-run, --replace, and --planning-harness-pack require --planning-harness" in out.err
 
 
 def test_planning_harness_reads_metactl_pack_snippet_interface(tmp_path):
@@ -252,3 +252,25 @@ def test_planning_harness_projects_pack_template_tree(tmp_path):
         "#!/bin/sh"
     )
     assert (repo / "tools/verify/run_targeted.sh").stat().st_mode & 0o111
+
+
+def test_cmd_overlay_planning_harness_pack_option_projects_templates(tmp_path):
+    repo = tmp_path / "legacy"
+    repo.mkdir()
+    pack = tmp_path / "pack"
+    template = pack / "codex-planning-harness/templates/repo"
+    strategy = template / "docs/strategy-briefs/active/StrategyBrief.template.md"
+    strategy.parent.mkdir(parents=True)
+    strategy.write_text("# StrategyBrief: from pack\n", encoding="utf-8")
+
+    rc = cli.cmd_overlay(
+        str(repo),
+        intake=False,
+        planning_harness=True,
+        planning_harness_pack=str(pack),
+    )
+
+    assert rc == 0
+    assert (repo / "docs/strategy-briefs/active/StrategyBrief.template.md").read_text(
+        encoding="utf-8"
+    ) == "# StrategyBrief: from pack\n"

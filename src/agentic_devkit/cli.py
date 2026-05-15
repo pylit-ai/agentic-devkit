@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .census import write_census_yaml
-from .planning_harness import apply_planning_harness
+from .planning_harness import PACK_ENV_VAR, apply_planning_harness, resolve_pack_root
 from .private_overlay import (
     default_private_repo,
     default_public_repo_for_init,
@@ -144,13 +144,17 @@ def cmd_overlay(
     planning_harness: bool = False,
     dry_run: bool = False,
     replace: bool = False,
+    planning_harness_pack: str | None = None,
 ) -> int:
     """Apply brownfield overlay to an existing repo. With --intake, run census first."""
     if private_repo and not private_overlay:
         print("Error: --private-repo requires --private-overlay.", file=sys.stderr)
         return 2
-    if (dry_run or replace) and not planning_harness:
-        print("Error: --dry-run and --replace require --planning-harness.", file=sys.stderr)
+    if (dry_run or replace or planning_harness_pack) and not planning_harness:
+        print(
+            "Error: --dry-run, --replace, and --planning-harness-pack require --planning-harness.",
+            file=sys.stderr,
+        )
         return 2
 
     path = Path(path).resolve()
@@ -160,7 +164,13 @@ def cmd_overlay(
 
     if planning_harness:
         try:
-            actions = apply_planning_harness(path, dry_run=dry_run, replace=replace)
+            pack_root = resolve_pack_root(planning_harness_pack)
+            actions = apply_planning_harness(
+                path,
+                pack_root=pack_root,
+                dry_run=dry_run,
+                replace=replace,
+            )
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
@@ -169,7 +179,13 @@ def cmd_overlay(
         for action in actions:
             rel = action.path.relative_to(path) if action.path.is_relative_to(path) else action.path
             print(f"  - {action.action}: {rel} ({action.reason})")
-        print("Canonical source: /Users/reynard/src/wx-b/metactl-library/packs/wxb-pack-codex-planning-harness/")
+        if pack_root and pack_root.is_dir():
+            print(f"Canonical source: {pack_root}")
+        else:
+            print(
+                "Canonical source not found; used fallback shims. "
+                f"Set --planning-harness-pack or {PACK_ENV_VAR} to project the metactl pack."
+            )
         if any(action.action == "merge-candidate" for action in actions):
             print("Existing files were not overwritten; review the .new merge candidates.")
         return 0
@@ -331,6 +347,10 @@ def main() -> int:
         action="store_true",
         help="Replace existing planning harness files instead of writing .new merge candidates",
     )
+    p_overlay.add_argument(
+        "--planning-harness-pack",
+        help="Path to wxb-pack-codex-planning-harness in metactl-library",
+    )
     p_overlay.set_defaults(
         func=lambda a: cmd_overlay(
             a.path,
@@ -340,6 +360,7 @@ def main() -> int:
             a.planning_harness,
             a.dry_run,
             a.replace,
+            a.planning_harness_pack,
         )
     )
 

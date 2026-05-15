@@ -1,10 +1,11 @@
 """Thin adapter for adopting the Codex Planning Harness."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_PACK_ROOT = Path("/Users/reynard/src/wx-b/metactl-library/packs/wxb-pack-codex-planning-harness")
+PACK_ENV_VAR = "AGENTIC_DEV_PLANNING_HARNESS_PACK"
 
 _PACK_SOURCE_ROOTS = (
     Path("codex-planning-harness/templates/repo"),
@@ -172,7 +173,7 @@ def apply_planning_harness(
     if not target_path.is_dir():
         raise ValueError(f"not a directory: {target_path}")
 
-    source_root = Path(pack_root).resolve() if pack_root else DEFAULT_PACK_ROOT
+    source_root = resolve_pack_root(pack_root)
     files = _load_pack_files(source_root)
     actions: list[HarnessWrite] = []
 
@@ -200,12 +201,21 @@ def apply_planning_harness(
     return actions
 
 
-def _load_pack_files(pack_root: Path) -> dict[str, tuple[str, bool]]:
+def resolve_pack_root(pack_root: str | Path | None = None) -> Path | None:
+    if pack_root:
+        return Path(pack_root).resolve()
+    env_pack_root = os.environ.get(PACK_ENV_VAR)
+    if env_pack_root:
+        return Path(env_pack_root).resolve()
+    return None
+
+
+def _load_pack_files(pack_root: Path | None) -> dict[str, tuple[str, bool]]:
     files = {
         rel_path: (content, rel_path in _FALLBACK_EXECUTABLES)
         for rel_path, content in _FALLBACK_FILES.items()
     }
-    if not pack_root.is_dir():
+    if pack_root is None or not pack_root.is_dir():
         return files
 
     template_root = _find_pack_template_root(pack_root)
