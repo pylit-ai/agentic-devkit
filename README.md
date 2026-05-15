@@ -30,11 +30,16 @@ uvx agentic-devkit overlay ../example-app --private-overlay --private-repo .
 
 # Existing repo + prefill CURRENT_STATE from repo structure
 uvx agentic-devkit overlay . --intake
+
+# Existing repo + Codex Planning Harness adoption
+uvx agentic-devkit overlay . --planning-harness
 ```
 
 Requires [uv](https://docs.astral.sh/uv/) (or `pip install agentic-devkit`).
 
 The **init** and **overlay** commands use bundled templates by default, so no GitHub repo or extra config is required. To use your own template source instead, set `AGENTIC_DEV_GREENFIELD_SOURCE` or `AGENTIC_DEV_BROWNFIELD_SOURCE` to a `gh:org/repo` URL or a local path.
+
+The **planning harness** adapter is intentionally thin. It creates the repo-local Codex planning layout (`docs/strategy-briefs/active/`, `docs/exec-plans/active/`, `status/CURRENT.md`, `.codex/agents/`, `.codex/config.toml`, and `tools/policy/`) while treating `/Users/reynard/src/wx-b/metactl-library/packs/wxb-pack-codex-planning-harness/` as the canonical harness source. Existing files are not overwritten by default; merge candidates are written as `.new`. Use `--dry-run` to preview actions or `--replace` when you deliberately want harness files replaced.
 
 ---
 

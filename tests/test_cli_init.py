@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from agentic_devkit import cli
+from agentic_devkit.planning_harness import apply_planning_harness
 
 
 def test_cmd_init_uses_bundled_source_when_available(monkeypatch):
@@ -171,3 +172,61 @@ def test_private_overlay_path_options_require_private_overlay(monkeypatch, capsy
     assert overlay_rc == 2
     assert "--public-repo and --private-repo require --private-overlay" in out.err
     assert "--private-repo requires --private-overlay" in out.err
+
+
+def test_cmd_overlay_planning_harness_creates_required_layout(tmp_path, monkeypatch):
+    repo = tmp_path / "legacy"
+    repo.mkdir()
+
+    def _unexpected_copier(_source: str, _dest: Path) -> int:
+        raise AssertionError("planning harness adoption should not run Copier")
+
+    monkeypatch.setattr(cli, "_run_copier", _unexpected_copier)
+
+    rc = cli.cmd_overlay(str(repo), intake=False, planning_harness=True)
+
+    assert rc == 0
+    assert (repo / "AGENTS.md").is_file()
+    assert (repo / "docs/strategy-briefs/active").is_dir()
+    assert (repo / "docs/exec-plans/active").is_dir()
+    assert (repo / "status/CURRENT.md").is_file()
+    assert (repo / ".codex/config.toml").is_file()
+    assert (repo / ".codex/agents/planner.toml").is_file()
+    assert (repo / "tools/policy/check_planning_harness.py").is_file()
+
+
+def test_cmd_overlay_planning_harness_writes_merge_candidates(tmp_path):
+    repo = tmp_path / "legacy"
+    repo.mkdir()
+    existing_agents = repo / "AGENTS.md"
+    existing_agents.write_text("# Existing agent rules\n", encoding="utf-8")
+
+    rc = cli.cmd_overlay(str(repo), intake=False, planning_harness=True)
+
+    assert rc == 0
+    assert existing_agents.read_text(encoding="utf-8") == "# Existing agent rules\n"
+    assert (repo / "AGENTS.md.new").is_file()
+
+
+def test_cmd_overlay_dry_run_requires_planning_harness(tmp_path, capsys):
+    repo = tmp_path / "legacy"
+    repo.mkdir()
+
+    rc = cli.cmd_overlay(str(repo), intake=False, dry_run=True)
+    out = capsys.readouterr()
+
+    assert rc == 2
+    assert "--dry-run and --replace require --planning-harness" in out.err
+
+
+def test_planning_harness_reads_metactl_pack_snippet_interface(tmp_path):
+    repo = tmp_path / "legacy"
+    repo.mkdir()
+    pack = tmp_path / "pack"
+    snippet = pack / "codex-planning-harness/snippets/AGENTS.md.addition.md"
+    snippet.parent.mkdir(parents=True)
+    snippet.write_text("## Canonical Planning Harness\n", encoding="utf-8")
+
+    apply_planning_harness(repo, pack_root=pack)
+
+    assert (repo / "AGENTS.md").read_text(encoding="utf-8") == "## Canonical Planning Harness\n"

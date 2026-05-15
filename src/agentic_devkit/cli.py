@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from .census import write_census_yaml
+from .planning_harness import apply_planning_harness
 from .private_overlay import (
     default_private_repo,
     default_public_repo_for_init,
@@ -140,16 +141,39 @@ def cmd_overlay(
     intake: bool,
     private_overlay: bool = False,
     private_repo: str | None = None,
+    planning_harness: bool = False,
+    dry_run: bool = False,
+    replace: bool = False,
 ) -> int:
     """Apply brownfield overlay to an existing repo. With --intake, run census first."""
     if private_repo and not private_overlay:
         print("Error: --private-repo requires --private-overlay.", file=sys.stderr)
+        return 2
+    if (dry_run or replace) and not planning_harness:
+        print("Error: --dry-run and --replace require --planning-harness.", file=sys.stderr)
         return 2
 
     path = Path(path).resolve()
     if not path.is_dir():
         print(f"Error: not a directory: {path}", file=sys.stderr)
         return 1
+
+    if planning_harness:
+        try:
+            actions = apply_planning_harness(path, dry_run=dry_run, replace=replace)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        prefix = "Would " if dry_run else ""
+        print(f"{prefix}Apply Codex Planning Harness to {path}")
+        for action in actions:
+            rel = action.path.relative_to(path) if action.path.is_relative_to(path) else action.path
+            print(f"  - {action.action}: {rel} ({action.reason})")
+        print("Canonical source: /Users/reynard/src/wx-b/metactl-library/packs/wxb-pack-codex-planning-harness/")
+        if any(action.action == "merge-candidate" for action in actions):
+            print("Existing files were not overwritten; review the .new merge candidates.")
+        return 0
+
     source = _brownfield_source()
 
     if not private_overlay:
@@ -292,7 +316,32 @@ def main() -> int:
         help="Scaffold or refresh a private companion repo for this public repo",
     )
     p_overlay.add_argument("--private-repo", help="Private overlay repo path to use with --private-overlay")
-    p_overlay.set_defaults(func=lambda a: cmd_overlay(a.path, a.intake, a.private_overlay, a.private_repo))
+    p_overlay.add_argument(
+        "--planning-harness",
+        action="store_true",
+        help="Apply the Codex Planning Harness layout without making this package canonical source",
+    )
+    p_overlay.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show planning harness file actions without writing files",
+    )
+    p_overlay.add_argument(
+        "--replace",
+        action="store_true",
+        help="Replace existing planning harness files instead of writing .new merge candidates",
+    )
+    p_overlay.set_defaults(
+        func=lambda a: cmd_overlay(
+            a.path,
+            a.intake,
+            a.private_overlay,
+            a.private_repo,
+            a.planning_harness,
+            a.dry_run,
+            a.replace,
+        )
+    )
 
     p_intake = sub.add_parser("intake", help="Show brownfield intake next-step instructions")
     p_intake.add_argument("path", nargs="?", default=".", help="Repo path (default: .)")
